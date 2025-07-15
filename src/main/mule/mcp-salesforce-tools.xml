@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:mac-inference="http://www.mulesoft.org/schema/mule/mac-inference"
+	xmlns:salesforce="http://www.mulesoft.org/schema/mule/salesforce" xmlns:mule-sap-concur-connector="http://www.mulesoft.org/schema/mule/mule-sap-concur-connector"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:tls="http://www.mulesoft.org/schema/mule/tls" xmlns:mcp="http://www.mulesoft.org/schema/mule/mcp" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/mcp http://www.mulesoft.org/schema/mule/mcp/current/mule-mcp.xsd
+http://www.mulesoft.org/schema/mule/tls http://www.mulesoft.org/schema/mule/tls/current/mule-tls.xsd
+http://www.mulesoft.org/schema/mule/mule-sap-concur-connector http://www.mulesoft.org/schema/mule/mule-sap-concur-connector/current/mule-mule-sap-concur-connector.xsd
+http://www.mulesoft.org/schema/mule/salesforce http://www.mulesoft.org/schema/mule/salesforce/current/mule-salesforce.xsd
+http://www.mulesoft.org/schema/mule/mac-inference http://www.mulesoft.org/schema/mule/mac-inference/current/mule-mac-inference.xsd">
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="97659b43-6a3c-4ef6-915d-9740e000935d" >
+		<http:listener-connection host="0.0.0.0" port="8082" protocol="HTTPS">
+			<tls:context >
+				<tls:key-store type="jks" path="keystore.jks" keyPassword="password" password="password" />
+			</tls:context>
+			
+		</http:listener-connection>
+	</http:listener-config>
+	<mcp:server-config name="MCP_Server" doc:name="MCP Server" doc:id="7b8c3573-d513-451b-ab61-3ecbe9a731df" serverName="mule-mcp-server" serverVersion="1.0.0" >
+		<mcp:sse-server-connection listenerConfig="HTTP_Listener_config">
+			<reconnection >
+				<reconnect blocking="false" />
+			</reconnection>
+		</mcp:sse-server-connection>
+	</mcp:server-config>
+	<mcp:client-config name="MCP_Client"
+		doc:name="MCP Client" doc:id="ccedc73d-5f65-44c8-8b15-c389ea6dcbba"
+		clientName="mule-mcp-client" clientVersion="1.0.0">
+		<mcp:sse-client-connection
+			serverUrl="https://localhost:8082"
+			requestTimeout="120">
+			<tls:context>
+				<tls:trust-store path="keystore.jks"
+					password="password" type="jks" insecure="true" />
+			</tls:context>
+		</mcp:sse-client-connection>
+	</mcp:client-config>
+	<salesforce:sfdc-config name="Salesforce_Config" doc:name="Salesforce Config" doc:id="2008bab9-f1a1-4da4-bedb-4c9ca340b2ab" >
+		<salesforce:basic-connection url="https://login.salesforce.com/services/Soap/u/63.0" />
+	</salesforce:sfdc-config>
+	<mac-inference:text-generation-config name="MuleSoft_Inference_Text_generation_config" doc:name="MuleSoft Inference Text generation config" doc:id="4538c462-0141-408b-ba20-98b10dc111cd" >
+		<mac-inference:llm-connection inferenceType="OPENAI" timeout="120000" modelName="gpt-4o-mini">
+			<mac-inference:mcp-sse-servers >
+				<mac-inference:mcp-sse-server key="CRM Server" value="https://localhost:8082" />
+			</mac-inference:mcp-sse-servers>
+		</mac-inference:llm-connection>
+	</mac-inference:text-generation-config>
+	<http:listener-config name="HTTP_Listener_config1" doc:name="HTTP Listener config" doc:id="854a8bff-07f1-4ba5-9eab-0b653d7cb154" >
+		<http:listener-connection host="0.0.0.0" port="8081" connectionIdleTimeout="120000"/>
+	</http:listener-config>
+	<flow name="retrieve-account-details-tool" doc:id="7048f666-d39e-4ae5-a68c-78a0534aaf54" >
+		<mcp:tool-listener doc:name="Tool Listener" doc:id="86029a22-ef17-46c6-b634-d2a056ace451" config-ref="MCP_Server" name="get_accounts_details">
+			<mcp:description ><![CDATA[This tool retrieves the Account details from Salesforce based on a valid Salesforce Account Number.]]></mcp:description>
+			<mcp:parameters-schema ><![CDATA[{ 
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+  	"accountNumber": {
+      "type": "string",
+      "description": "Account Number of a Salesforce account"
+    }
+  	},
+  "required": []
+}]]></mcp:parameters-schema>
+			<mcp:responses >
+				<mcp:text-tool-response-content text="#[payload.^raw]" priority="1" />
+			</mcp:responses>
+		</mcp:tool-listener>
+		<logger level="INFO" doc:name="START" doc:id="62d3f381-bbe7-4ef0-bf00-e66a4067d7ae" message="Invoked get_accounts_details server"/>
+		<logger level="INFO" doc:name="Start retrieving Account details" doc:id="cbbe5b4b-4fb0-47f8-b030-115ddda0af75" message="Start retrieving Account details from Salesforce for account number: #[payload.accountNumber]"/>
+		<salesforce:query doc:name="Query Account Details" doc:id="69637007-ac7c-4367-9b38-13fa2575b3fd" config-ref="Salesforce_Config">
+			<salesforce:salesforce-query><![CDATA[SELECT
+    Id,
+    Name,
+    AccountNumber,
+    Type,
+    Industry,
+    Rating,
+    Phone,
+    Website,
+    BillingStreet,
+    BillingCity,
+    BillingState,
+    BillingPostalCode,
+    BillingCountry,
+    ShippingStreet,
+    ShippingCity,
+    ShippingState,
+    ShippingPostalCode,
+    ShippingCountry,
+    AnnualRevenue,
+    NumberOfEmployees,
+    Description,
+    Owner.Name,
+    CreatedDate,
+    LastModifiedDate
+FROM
+    Account
+WHERE AccountNumber=':accountNumber']]></salesforce:salesforce-query>
+			<salesforce:parameters ><![CDATA[#[{
+	"accountNumber": payload.accountNumber
+}]]]></salesforce:parameters>
+		</salesforce:query>
+		<logger level="INFO" doc:name="End retrieving Account details" doc:id="7948fc39-0c71-4f28-b108-cb3e073e1044" message="End retrieving Account details from Salesforce"/>
+		<ee:transform doc:name="Transform Message" doc:id="c2896db1-a4c4-43a6-8461-c8391f461247" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload[0]]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="END" doc:id="d9147ebd-c199-4a2a-982f-832100ea715a" message="Invoked get_accounts_details request completed successfully" />
+	</flow>
+</mule>

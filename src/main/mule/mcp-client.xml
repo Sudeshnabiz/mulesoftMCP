@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:mac-inference="http://www.mulesoft.org/schema/mule/mac-inference"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:tls="http://www.mulesoft.org/schema/mule/tls"
+	xmlns:mcp="http://www.mulesoft.org/schema/mule/mcp"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd 
+http://www.mulesoft.org/schema/mule/tls http://www.mulesoft.org/schema/mule/tls/current/mule-tls.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/mcp http://www.mulesoft.org/schema/mule/mcp/current/mule-mcp.xsd
+http://www.mulesoft.org/schema/mule/mac-inference http://www.mulesoft.org/schema/mule/mac-inference/current/mule-mac-inference.xsd">
+	<flow name="mcp-clientFlow"
+		doc:id="e90f4ddf-33b4-4b79-a4ff-74dc56b910f9">
+		<http:listener doc:name="GET:/accounts"
+			doc:id="6382238d-e674-4130-b853-bd7fc34f5912"
+			config-ref="HTTP_Listener_config" path="accounts" />
+		<set-variable
+			value="#[attributes.queryParams.accountNumber]"
+			doc:name="Set accountNumber"
+			doc:id="c64b0557-c782-4895-8133-afd446c93136"
+			variableName="accountNumber" />
+		<logger level="INFO" doc:name="Log Input"
+			message="Calling MCP Salesforce tool to fetch Account details for AccountNumber: #[vars.accountNumber]" />
+		<mcp:call-tool toolName="get_accounts_details"
+			doc:name="Call get_accounts_details tool" doc:id="b0b9603f-51f3-4e21-ad2f-e165be358b92"
+			config-ref="MCP_Client">
+			<mcp:arguments><![CDATA[#[{
+	"accountNumber": vars.accountNumber
+}]]]></mcp:arguments>
+		</mcp:call-tool>
+		<!-- [STUDIO:"Process MCP Response"]<ee:transform doc:name="Process MCP Response">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json 
+&#45;&#45;-
+if (payload.contents? and payload.contents[0&#93;? and payload.contents[0&#93;.text?) read(payload.contents[0&#93;.text, 'application/json')
+else { "error": "No valid response from MCP tool" }&#93;&#93;></ee:set-payload>
+			</ee:message>
+		</ee:transform> [STUDIO] -->
+
+		<logger level="INFO" doc:name="Log Output"
+			message="Received response from MCP tool: #[payload]" />
+		<mac-inference:agent-define-prompt-template doc:name="[Agent] Define Prompt Template" doc:id="d8bc160b-7af3-426a-bdf2-5e45cf45d272" config-ref="MuleSoft_Inference_Text_generation_config">
+			<mac-inference:template ><![CDATA[You are an AI Agent, Your job is to help the users with Salesforce related queries. You should respond based on the knowledge provided and should not make up things before responding]]></mac-inference:template>
+			<mac-inference:instructions ><![CDATA[1. Generate the response based on the the data coming to you
+2. Give a Brief overview of the response not more than 50 words
+2. Maintain politeness in the response]]></mac-inference:instructions>
+			<mac-inference:data ><![CDATA[#[payload.contents[0].text]]]></mac-inference:data>
+		</mac-inference:agent-define-prompt-template>
+		<ee:transform doc:name="Transform Message" doc:id="14e4fd79-1e79-4a98-8cc0-707126e91baf" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload.response]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="mcp-clientFlow1" doc:id="6a857ba0-d9f4-4f60-8f5a-79b70eafd3fa" >
+		<http:listener doc:name="Listener" doc:id="4848f7c0-1e55-4dc8-9bfb-eb7aa9721006" config-ref="HTTP_Listener_config" path="list-tools"/>
+		<mcp:list-tools doc:name="List tools" doc:id="ffb4eb06-77ed-4bd9-ad5a-2282f8bf3226" config-ref="MCP_Client"/>
+		<mac-inference:agent-define-prompt-template doc:name="[Agent] Define Prompt Template" doc:id="fe9cd93e-d7ff-4283-94ac-bb3fc155c01f" config-ref="MuleSoft_Inference_Text_generation_config">
+			<mac-inference:template><![CDATA[You are an AI Agent, You job is to respond the user with the list of avaialbale tools, based on the knowledge provided and should not make up things before responding]]></mac-inference:template>
+			<mac-inference:instructions><![CDATA[1. List the tools aavailabe based on the knowledge in a proper format
+2. Give a brief description of the tool.
+3. Maintain politeness while giving the response]]></mac-inference:instructions>
+			<mac-inference:data><![CDATA[#["Tool Name: " ++ payload[0].name ++ "\n Tool Description: " ++ payload[0].description]]]></mac-inference:data>
+		</mac-inference:agent-define-prompt-template>
+		<ee:transform doc:name="Transform Message" doc:id="49b3555c-f513-473e-83ea-7d41f7ae4690" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload.response]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="mcp-clientFlow2" doc:id="cc04c373-e12a-42a2-8da5-4c76c112b116" >
+		<http:listener doc:name="Listener" doc:id="35d03ca5-fd5d-49c3-8d33-35b13476e281" config-ref="HTTP_Listener_config1" path="ask-api" outputMimeType="application/json" outputEncoding="UTF-8">
+			<http:response >
+				<http:headers ><![CDATA[#[output application/java
+---
+{
+	"Access-Control-Allow-Origin" : "*"
+}]]]></http:headers>
+			</http:response>
+		</http:listener>
+		<set-variable value="#[attributes.queryParams.question]" doc:name="prompt" doc:id="8b3ef94b-a344-4dfc-9375-c4b020b0024c" variableName="prompt"/>
+		<mcp:list-tools doc:name="List available tools" doc:id="cd159a80-6c0e-44ae-8288-d1bad80c7c26" config-ref="MCP_Client" />
+		<mac-inference:agent-define-prompt-template doc:name="[Agent] Define Prompt Template" doc:id="cbdc7574-3ef1-41dc-87b2-73987c12670f" config-ref="MuleSoft_Inference_Text_generation_config" >
+			<mac-inference:template ><![CDATA[You are an AI Agent, Your job is to decide the best availabe tool based on the Users query and knowledge provided. You should not make up things before responding.]]></mac-inference:template>
+			<mac-inference:instructions ><![CDATA[Provide the response as this json: {"toolName": yourPrescribedTool, "inputParameters": list of Input Parameters and there values(Maintain the camelcase as defined in the schema) }. Maintain politeness while giving the response. Don't provide instructions to the User]]></mac-inference:instructions>
+			<mac-inference:data ><![CDATA[#["Users prompt: " ++ vars.prompt ++ "\n Tool Name: " ++ payload[0].name ++ "\n Tool Description: " ++ payload[0].description ++ "\n Tool Input Schema: " ++ payload[0].inputSchema]]]></mac-inference:data>
+		</mac-inference:agent-define-prompt-template>
+		<ee:transform doc:name="Format Response" doc:id="855c8cdc-712f-4968-95dc-ff7eb2839d5b" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+read(payload.response, "application/json")]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<mcp:call-tool toolName="#[payload.toolName]" doc:name="Call get_accounts_details tool" doc:id="f1938657-03c0-4bd5-bf52-d428c66fb3e0" config-ref="MCP_Client" >
+			<mcp:arguments ><![CDATA[#[payload.inputParameters]]]></mcp:arguments>
+		</mcp:call-tool>
+		<mac-inference:agent-define-prompt-template doc:name="[Agent] Define Prompt Template" doc:id="1d45fc66-c5aa-4009-a2df-11865508aae4" config-ref="MuleSoft_Inference_Text_generation_config" >
+			<mac-inference:template ><![CDATA[You are an AI Agent, Your job is to help the users with Salesforce related queries. You should respond based on the knowledge provided and should not make up things before responding]]></mac-inference:template>
+			<mac-inference:instructions ><![CDATA[1. Generate the response based on the the data coming to you
+2. Maintain politeness in the response
+3. Don't give instructions to the user]]></mac-inference:instructions>
+			<mac-inference:data ><![CDATA[#[payload.contents[0].text]]]></mac-inference:data>
+		</mac-inference:agent-define-prompt-template>
+		<ee:transform doc:name="Format response" doc:id="4ae6d173-5152-4f00-bca1-0ece647e1cf2" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload.response]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+</mule>
